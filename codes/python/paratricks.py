@@ -21,7 +21,7 @@ dataImporter.SetWholeExtent(0, 11, 0, 7, 0, 0)
 '''
 
 from paraview import numpy_support
-ParaView_numpy_data=numpy_support.numpy_to_vtk(NumPy_data.copy())
+ParaView_numpy_data = numpy_support.numpy_to_vtk(NumPy_data.copy())
 
 
 import paraview

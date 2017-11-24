@@ -51,6 +51,7 @@ import petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
 
+
 class poisson(object):
     def __init__(self, dm, dx_i):
         self.dm = dm
@@ -59,36 +60,41 @@ class poisson(object):
         self.dz = dx_i["dz"]
         self.local_field = self.dm.createLocalVector()
         self.g = self.dm.createGlobalVector()
+
     @property
     def stencil_width(self):
         return self.dm.getStencilWidth()
+
     def create_initial_guess(self, field):
         field_ = self.dm.getVecArray(field)
         g_ = self.dm.getVecArray(self.g)
         field_[:] = numpy.random.random(field_.shape)
         g_[:] = numpy.ones_like(field_)
         lf = self.dm.getVecArray(self.local_field)
-        lf[:,:,:]=-7.0
+        lf[:, :, :] = -7.0
+
     def monitor(self, snes, iter, fnorm):
         sol = snes.getSolution()
         field_array = self.dm.getVecArray(sol)
+
     def rhs(self, snes, field, rhs):
         self.dm.globalToLocal(field, self.local_field)
         field_array = self.dm.getVecArray(self.local_field)
         rhs_array = self.dm.getVecArray(rhs)
-        rhs_array[:]=0
+        rhs_array[:] = 0
         g_ = self.dm.getVecArray(self.g)
         (xs, xe), (ys, ye), (zs, ze) = self.dm.getRanges()
-        dx,dy,dz=self.dx,self.dy,self.dz
+        dx, dy, dz = self.dx, self.dy, self.dz
         lapl = (
-            (field_array[xs-1:xe-1,ys:ye,zs:ze]-2*field_array[xs:xe,ys:ye,zs:ze]
-             +field_array[xs+1:xe+1,ys:ye,zs:ze])/dx*dy*dz +
-            (field_array[xs:xe,ys-1:ye-1,zs:ze]-2*field_array[xs:xe,ys:ye,zs:ze]
-             +field_array[xs:xe,ys+1:ye+1,zs:ze])/dy*dx*dz +
-            (field_array[xs:xe,ys:ye,zs-1:ze-1]-2*field_array[xs:xe,ys:ye,zs:ze]
-             +field_array[xs:xe,ys:ye,zs+1:ze+1])/dz*dx*dy)
-        rhs_array[:] = lapl[:,:,:] - g_[:,:,:]*dx*dy*dz
+            (field_array[xs - 1:xe - 1, ys:ye, zs:ze] - 2 * field_array[xs:xe, ys:ye, zs:ze]
+             + field_array[xs + 1:xe + 1, ys:ye, zs:ze]) / dx * dy * dz +
+            (field_array[xs:xe, ys - 1:ye - 1, zs:ze] - 2 * field_array[xs:xe, ys:ye, zs:ze]
+             + field_array[xs:xe, ys + 1:ye + 1, zs:ze]) / dy * dx * dz +
+            (field_array[xs:xe, ys:ye, zs - 1:ze - 1] - 2 * field_array[xs:xe, ys:ye, zs:ze]
+             + field_array[xs:xe, ys:ye, zs + 1:ze + 1]) / dz * dx * dy)
+        rhs_array[:] = lapl[:, :, :] - g_[:, :, :] * dx * dy * dz
         return
+
     def formJacobian(self, snes, X, J, P):
         self.dm.globalToLocal(X, self.local_field)
         field_array = self.dm.getVecArray(self.local_field)
@@ -96,51 +102,52 @@ class poisson(object):
         row = PETSc.Mat.Stencil()
         col = PETSc.Mat.Stencil()
         (xs, xe), (ys, ye), (zs, ze) = self.dm.getRanges()
-        dx,dy,dz=self.dx,self.dy,self.dz
+        dx, dy, dz = self.dx, self.dy, self.dz
         for k in range(zs, ze):
             for j in range(ys, ye):
                 for i in range(xs, xe):
-                    row.index = (i,j,k)
+                    row.index = (i, j, k)
                     row.field = 0
-                    u = field_array[i,j,k]
-                    diag = -2.0*(dx*dy/dz+dx*dz/dy+dy*dz/dx)
+                    u = field_array[i, j, k]
+                    diag = -2.0 * (dx * dy / dz + dx * dz / dy + dy * dz / dx)
                     for index, value in [
-                            ((i,j,k-1), +1.0/dz*dx*dy),
-                            ((i,j-1,k), +1.0/dy*dx*dz),
-                            ((i-1,j,k), +1.0/dx*dy*dz),
+                            ((i, j, k - 1), +1.0 / dz * dx * dy),
+                            ((i, j - 1, k), +1.0 / dy * dx * dz),
+                            ((i - 1, j, k), +1.0 / dx * dy * dz),
                             ((i, j, k), diag),
-                            ((i+1,j,k), +1.0/dx*dy*dz),
-                            ((i,j+1,k), +1.0/dy*dx*dz),
-                            ((i,j,k+1), +1.0/dz*dx*dy)]:
+                            ((i + 1, j, k), +1.0 / dx * dy * dz),
+                            ((i, j + 1, k), +1.0 / dy * dx * dz),
+                            ((i, j, k + 1), +1.0 / dz * dx * dy)]:
                         col.index = index
                         col.field = 0
                         P.setValueStencil(row, col, value)
         P.assemble()
         if (J != P):
-            J.assemble() # matrix-free operator
+            J.assemble()  # matrix-free operator
         return PETSc.Mat.Structure.SAME_NONZERO_PATTERN
 
+
 stype = PETSc.DMDA.StencilType.BOX
-bx    = PETSc.DMDA.BoundaryType.GHOSTED
-by    = PETSc.DMDA.BoundaryType.GHOSTED
-bz    = PETSc.DMDA.BoundaryType.GHOSTED
+bx = PETSc.DMDA.BoundaryType.GHOSTED
+by = PETSc.DMDA.BoundaryType.GHOSTED
+bz = PETSc.DMDA.BoundaryType.GHOSTED
 comm = PETSc.COMM_WORLD
 rank = comm.rank
-OptDB = PETSc.Options() #get PETSc option DB
-#M = OptDB.getInt('M', 11)
-#N = OptDB.getInt('N', 7)
-#P = OptDB.getInt('P', 5)
-M,N,P = -11, -7, -5
+OptDB = PETSc.Options()  # get PETSc option DB
+M = OptDB.getInt('M', 11)
+N = OptDB.getInt('N', 7)
+P = OptDB.getInt('P', 5)
+# M, N, P = -11, -7, -5
 m = OptDB.getInt('m', PETSc.DECIDE)
 n = OptDB.getInt('n', PETSc.DECIDE)
 p = OptDB.getInt('p', PETSc.DECIDE)
-dm = PETSc.DMDA().create(dim=3, sizes = (M,N,P), proc_sizes=(m,n,p),
-                         boundary_type=(bx,by,bz), stencil_type=stype,
-                         stencil_width = 1, dof = 1, comm = comm, setup = False)
+dm = PETSc.DMDA().create(dim=3, sizes=(M, N, P), proc_sizes=(m, n, p),
+                         boundary_type=(bx, by, bz), stencil_type=stype,
+                         stencil_width=1, dof=1, comm=comm, setup=False)
 dm.setFromOptions()
 dm.setUp()
 
-poisson_problem = poisson(dm, {"dx":0.1, "dy":0.1, "dz":0.1})
+poisson_problem = poisson(dm, {"dx": 0.1, "dy": 0.1, "dz": 0.1})
 
 rhs = dm.createGlobalVector()
 
@@ -150,23 +157,23 @@ snes.setFunction(poisson_problem.rhs, rhs)
 snes.setMonitor(poisson_problem.monitor)
 
 if (OptDB.hasName("snes_mf")):
-    mf=OptDB.getBool("snes_mf")
+    mf = OptDB.getBool("snes_mf")
 else:
-    mf=None
+    mf = None
 if (OptDB.hasName("snes_fd")):
-    fd=OptDB.getBool("snes_fd")
+    fd = OptDB.getBool("snes_fd")
 else:
-    fd=None
+    fd = None
 if (OptDB.hasName("snes_mf_operator")):
-    mfop=OptDB.getBool("snes_mf_operator")
+    mfop = OptDB.getBool("snes_mf_operator")
 else:
-    mfop=None
+    mfop = None
 if (OptDB.hasName("snes_fd_color")):
-    fdcol=OptDB.getBool("snes_fd_color")
+    fdcol = OptDB.getBool("snes_fd_color")
 else:
     # this actually defaults to True but we want to make sure we have a way of
     # using the hand-written Jacobian, too and we want that by default
-    fdcol=None
+    fdcol = None
 print("Using FD={fd}, MF={mf}, FD Color={fdcol}, MF Operator={mfop}".format(
     fd=fd, mf=mf, fdcol=fdcol, mfop=mfop))
 if not((mf) or (mfop) or (fd) or (fdcol)):
@@ -179,7 +186,7 @@ if not((mf) or (mfop) or (fd) or (fdcol)):
 elif (mf or mfop):
     if (fd or fdcol):
         raise ValueError("Cannot have both MF and FD at the same time.")
-elif (fd or fdcol or (fdcol==None)):
+elif (fd or fdcol or (fdcol == None)):
     # supplying no option means "-fd_color 1", so "fdcol==None" must be treated as
     # "fdcol==True"
     if (mf or mfop):

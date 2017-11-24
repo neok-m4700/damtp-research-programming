@@ -5,12 +5,13 @@ try:
 except:
     import ipyparallel
     c = ipyparallel.Client(profile="mpi_slurm", cluster_id="Azure_cluster_0")
-    directview=c[:]
-    directview.block=True
+    directview = c[:]
+    directview.block = True
     with directview.sync_imports():
         import numpy
         import mpi4py
         from mpi4py import MPI
+
 
 class rankinfo(object):
     '''This holds a few "global" values of our problem,
@@ -34,26 +35,33 @@ class rankinfo(object):
     localsizes : the number of lattice points along the
                  coordinate axes including the ghost points
     '''
+
     def __init__(self, sizes):
         '''See above for details of initialisation.'''
-        self.ndim=3
-        self.periods=[False, True, True]
+        self.ndim = 3
+        self.periods = [False, True, True]
         self.stencil_width = 1
-        self.rank=MPI.COMM_WORLD.Get_rank()
-        self.size=MPI.COMM_WORLD.Get_size()
-        self.localsizes=[x+self.stencil_width*2 for x in sizes]
-directview["rankinfo"]=rankinfo
+        self.rank = MPI.COMM_WORLD.Get_rank()
+        self.size = MPI.COMM_WORLD.Get_size()
+        self.localsizes = [x + self.stencil_width * 2 for x in sizes]
+
+
+directview["rankinfo"] = rankinfo
+
 
 def serialised_print(msg, topo):
     '''Print out a message from every rank syncronously in rank-order.
     Barrier() is global, so every rank must call it or we deadlock.'''
     myrank = topo.Get_rank()
-    for rankid in range(0,topo.Get_size()):
+    for rankid in range(0, topo.Get_size()):
         if (myrank == rankid):
             print(msg)
         topo.Barrier()
     return
-directview["serialised_print"]=serialised_print
+
+
+directview["serialised_print"] = serialised_print
+
 
 class topology(object):
     '''This class holds information related to the topology of the MPI
@@ -71,6 +79,7 @@ class topology(object):
     are used to find who those neighbours are.
 
     '''
+
     def __init__(self, rankinfo):
         '''Find out the best distribution of the lattice amonst the ranks of the
         communicator passed inside "rankinfo", create the topology, and
@@ -89,25 +98,29 @@ class topology(object):
                  direction
 
         '''
-        self.me=rankinfo
-        self.dims=MPI.Compute_dims(self.me.size, self.me.ndim)
-        self.topology=MPI.COMM_WORLD.Create_cart(self.dims,
-                                                 periods=self.me.periods, reorder=True)
-        left,right = self.topology.Shift(0,1)
-        front,back = self.topology.Shift(1,1)
-        up,down = self.topology.Shift(2,1)
-        self.shifts={"X": {"up": up, "down": down},
-                     "Y": {"up": back, "down": front},
-                     "Z": {"up": right, "down": left}}
+        self.me = rankinfo
+        self.dims = MPI.Compute_dims(self.me.size, self.me.ndim)
+        self.topology = MPI.COMM_WORLD.Create_cart(self.dims,
+                                                   periods=self.me.periods, reorder=True)
+        left, right = self.topology.Shift(0, 1)
+        front, back = self.topology.Shift(1, 1)
+        up, down = self.topology.Shift(2, 1)
+        self.shifts = {"X": {"up": up, "down": down},
+                       "Y": {"up": back, "down": front},
+                       "Z": {"up": right, "down": left}}
+
     def print_info(self):
         '''Print out textual information of the cartesian topology'''
         coords = self.topology.Get_coords(self.me.rank)
-        msg="I am rank {rank} and I live at {coords}.".format(
+        msg = "I am rank {rank} and I live at {coords}.".format(
             rank=self.me.rank, coords=coords)
         msg = msg + "Inverse lookup of {coords} gives rank {rank}.".format(
-            coords=coords,rank=self.topology.Get_cart_rank(coords))
+            coords=coords, rank=self.topology.Get_cart_rank(coords))
         serialised_print(msg, self.topology)
-directview["topology"]=topology
+
+
+directview["topology"] = topology
+
 
 class ghost_data(object):
     '''Ghost communication manager object.
@@ -139,6 +152,7 @@ class ghost_data(object):
     None supposed to be called from outside the class.
 
     '''
+
     def __init__(self, topology, sizes):
         '''Use MPI.DOUBLE.Create_subarray to create the datatypes required for
         ghost communications. We use MPI.DOUBLE as the underlying unit
@@ -155,40 +169,46 @@ class ghost_data(object):
               subarray starts, in coordinates of the full local array
 
         '''
-        self.mz,self.my,self.mx = sizes
+        self.mz, self.my, self.mx = sizes
         self.types = {}
         self.axes = {}
         for axis in ["X", "Y", "Z"]:
-            self.types[axis]={}
-            self.axes[axis]={}
+            self.types[axis] = {}
+            self.axes[axis] = {}
             for op in ["send", "recv"]:
-                self.types[axis][op]={}
-                for movements in [("up","down"), ("down","up")]:
+                self.types[axis][op] = {}
+                for movements in [("up", "down"), ("down", "up")]:
                     movement, negmovement = movements
                     self.types[axis][op][movement] = MPI.DOUBLE.Create_subarray(
                         sizes, self.get_plaq(axis),
-                        self.get_corner(axis,op,movement))
+                        self.get_corner(axis, op, movement))
                     self.types[axis][op][movement].Commit()
-                    self.axes[axis][movement]={
+                    self.axes[axis][movement] = {
                         "dest": topology.shifts[axis][movement],
                         "source": topology.shifts[axis][negmovement]}
+
     def axis2basisvec(self, axis):
         return numpy.array([axis == "Z", axis == "Y", axis == "X"],
                            dtype=numpy.float64)
+
     def get_plaq(self, axis):
         vec = self.axis2basisvec(axis)
-        pl = [self.mz, self.my, self.mx]*(1-vec)+vec
+        pl = [self.mz, self.my, self.mx] * (1 - vec) + vec
         return list(pl)
+
     def get_corner(self, axis, sendrecv, movement):
         vec = self.axis2basisvec(axis)
         axis_size = [x[0] for x in ((self.mx, "X"), (self.my, "Y"),
-                                    (self.mz, "Z")) if x[1]==axis][0]
-        loc = vec*( (movement=="down") +
-                    ((sendrecv=="send")*(movement=="up") or
-                     (sendrecv=="recv")*(movement=="down"))*(axis_size-2)
-        )
+                                    (self.mz, "Z")) if x[1] == axis][0]
+        loc = vec * ((movement == "down") +
+                     ((sendrecv == "send") * (movement == "up") or
+                      (sendrecv == "recv") * (movement == "down")) * (axis_size - 2)
+                     )
         return list(loc)
-directview["ghost_data"]=ghost_data
+
+
+directview["ghost_data"] = ghost_data
+
 
 def ghost_exchange_start(topo, localarray, ghostdefs):
     '''Start sending and receiving the ghost data.
@@ -204,8 +224,8 @@ def ghost_exchange_start(topo, localarray, ghostdefs):
     -------
     commslist : a list of the MPI communication objects that control the
                 transfers we started
-    '''    
-    commslist=[]
+    '''
+    commslist = []
     for axis in ["X", "Y", "Z"]:
         for direction in ["up", "down"]:
             commslist.append(
@@ -223,7 +243,10 @@ def ghost_exchange_start(topo, localarray, ghostdefs):
                     dest=ghostdefs.axes[axis][direction]["dest"],
                     tag=0))
     return commslist
-directview["ghost_exchange_start"]=ghost_exchange_start
+
+
+directview["ghost_exchange_start"] = ghost_exchange_start
+
 
 def ghost_exchange_finish(commslist):
     '''Wait until all the MPI transfers in "commslist" have finished.
@@ -234,7 +257,10 @@ def ghost_exchange_finish(commslist):
     '''
     MPI.Request.Waitall(commslist)
     return
-directview["ghost_exchange_finish"]=ghost_exchange_finish
+
+
+directview["ghost_exchange_finish"] = ghost_exchange_finish
+
 
 def initialise_values(me, topo):
     '''Set up the initial values in the lattice; never mind the details,
@@ -254,17 +280,20 @@ def initialise_values(me, topo):
     size = topo.topology.Get_size()
     local_array = numpy.zeros(me.localsizes)
     procsalong, periods, mycoord = topo.topology.Get_topo()
-    mycorner = mycoord*(numpy.array(me.localsizes)-2)
-    sz, sy, sx = numpy.array(me.localsizes)-2
+    mycorner = mycoord * (numpy.array(me.localsizes) - 2)
+    sz, sy, sx = numpy.array(me.localsizes) - 2
     for z in range(sz):
         for y in range(sy):
-            start = (mycorner[2] + sx*(y+mycorner[1])*procsalong[2] +
-                     sy*sx*(z+mycorner[0])*procsalong[2]*procsalong[1])
+            start = (mycorner[2] + sx * (y + mycorner[1]) * procsalong[2] +
+                     sy * sx * (z + mycorner[0]) * procsalong[2] * procsalong[1])
             stop = start + sx
-            local_array[z+1,y+1,1:-1] = numpy.arange(start,
-                                                     stop, step=1)**2
+            local_array[z + 1, y + 1, 1:-1] = numpy.arange(start,
+                                                           stop, step=1)**2
     return local_array
-directview["initialise_values"]=initialise_values
+
+
+directview["initialise_values"] = initialise_values
+
 
 def compute_grad(topology, local_array, ghostdefs):
     '''Compute the 2nd order central finite difference gradient of the
@@ -284,12 +313,15 @@ def compute_grad(topology, local_array, ghostdefs):
                 ghost points, too, but those are not included in
                 "gradients" (note the slice)
     '''
-    commslist=ghost_exchange_start(topology, local_array, ghostdefs)
+    commslist = ghost_exchange_start(topology, local_array, ghostdefs)
     # could do work here but NOT use ghost points!
     ghost_exchange_finish(commslist)
-    gradients=numpy.array(numpy.gradient(local_array))[:,1:-1,1:-1,1:-1]
+    gradients = numpy.array(numpy.gradient(local_array))[:, 1:-1, 1:-1, 1:-1]
     return gradients
-directview["compute_grad"]=compute_grad
+
+
+directview["compute_grad"] = compute_grad
+
 
 def find_global_max(topology, local_array, ghostdefs):
     '''Find the global maximum value on the lattice.  We first use the
@@ -317,7 +349,10 @@ def find_global_max(topology, local_array, ghostdefs):
                                 [maxgrad_global, MPI.DOUBLE],
                                 op=MPI.MAX)
     return maxgrad_local, maxgrad_global
-directview["find_global_max"]=find_global_max
+
+
+directview["find_global_max"] = find_global_max
+
 
 def testme(maxgrad, topology, localsizes):
     '''Test if we get the correct result.
@@ -332,15 +367,18 @@ def testme(maxgrad, topology, localsizes):
     maxgrad == expected[size-1] : True if the computed "maxgrad" was
                                   correct, False if not
     '''
-    size=topology.topology.Get_size()
-    rank=topology.topology.Get_rank()
+    size = topology.topology.Get_size()
+    rank = topology.topology.Get_rank()
     procsalong, periods, mycoord = topology.topology.Get_topo()
-    nz,ny,nx = procsalong
-    sz,sy,sx = (numpy.array(localsizes)-2)*numpy.array([nz,ny,nx])
-    maximum = 2*sx*sy*(-1+sx*sy*(sz-1))
-    expected=maximum
+    nz, ny, nx = procsalong
+    sz, sy, sx = (numpy.array(localsizes) - 2) * numpy.array([nz, ny, nx])
+    maximum = 2 * sx * sy * (-1 + sx * sy * (sz - 1))
+    expected = maximum
     return maxgrad == expected
-directview["testme"]=testme
+
+
+directview["testme"] = testme
+
 
 @directview.remote(block=False)
 def main():
@@ -354,8 +392,8 @@ def main():
     result_g, local_array : the global maximum of the data, the local
                             portion of the array
     '''
-    me=rankinfo(sizes=[3,4,5])
-    cartesian_topology=topology(me)
+    me = rankinfo(sizes=[3, 4, 5])
+    cartesian_topology = topology(me)
     ghosts = ghost_data(cartesian_topology, me.localsizes)
     cartesian_topology.print_info()
     local_array = initialise_values(me, cartesian_topology)
@@ -364,9 +402,9 @@ def main():
                                          ghosts)
     serialised_print(
         "Rank {rank} ".format(
-            rank=me.rank)+
+            rank=me.rank) +
         "had max gradient {maxgrad_l} ".format(
-            maxgrad_l=result_l)+
+            maxgrad_l=result_l) +
         "while the global was {maxgrad_g}.".format(
             maxgrad_g=result_g),
         cartesian_topology.topology)
@@ -377,6 +415,7 @@ def main():
             print("Result is incorrect!")
     return result_g, local_array
 
-results=main()
+
+results = main()
 results.wait()
 results.display_outputs()

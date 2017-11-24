@@ -27,7 +27,7 @@ class convection_diffusion(object):
     which of course assumes c\rho \ne 0, but if it were zero, we'd have a stupid equation
     anyway.
     '''
-    
+
     def __init__(self, dm, dx_i):
         self.dm = dm
         self.dx = dx_i["dx"]
@@ -39,10 +39,10 @@ class convection_diffusion(object):
         self.dOh = self.dm.createGlobalVector()
         mx, my, mz = self.dm.getSizes()
         # for now, we just have a cuboid domain
-        self.phys = {"minx": -self.dx*(mx+1)/2, "maxx": +self.dx*(mx+1)/2,
-                     "miny": -self.dy*(my+1)/2, "maxy": +self.dy*(my+1)/2,
-                     "minz": -self.dz*(mz+1)/2, "maxz": +self.dz*(mz+1)/2}
-    
+        self.phys = {"minx": -self.dx * (mx + 1) / 2, "maxx": +self.dx * (mx + 1) / 2,
+                     "miny": -self.dy * (my + 1) / 2, "maxy": +self.dy * (my + 1) / 2,
+                     "minz": -self.dz * (mz + 1) / 2, "maxz": +self.dz * (mz + 1) / 2}
+
     @property
     def stencil_width(self):
         return self.dm.getStencilWidth()
@@ -61,24 +61,24 @@ class convection_diffusion(object):
         g_[:] = numpy.ones_like(field_)
         # Gaussian source at origin
         (xs, xe), (ys, ye), (zs, ze) = self.dm.getRanges()
-        Xs = self.phys["minx"] + self.dx*(xs+1)
-        Xm = Xs + self.dx*(xe-xs-1)
-        Ys = self.phys["miny"] + self.dy*(ys+1)
-        Ym = Ys + self.dy*(ye-ys-1)
-        Zs = self.phys["minz"] + self.dz*(zs+1)
-        Zm = Zs + self.dz*(ze-zs-1)
-        X,Y,Z = numpy.mgrid[Xs:Xm:(xe-xs)*1j,
-                            Ys:Ym:(ye-ys)*1j,
-                            Zs:Zm:(ze-zs)*1j]
-        Q_[:,:,:] = numpy.exp(-(X**2+Y**2+Z**2))
+        Xs = self.phys["minx"] + self.dx * (xs + 1)
+        Xm = Xs + self.dx * (xe - xs - 1)
+        Ys = self.phys["miny"] + self.dy * (ys + 1)
+        Ym = Ys + self.dy * (ye - ys - 1)
+        Zs = self.phys["minz"] + self.dz * (zs + 1)
+        Zm = Zs + self.dz * (ze - zs - 1)
+        X, Y, Z = numpy.mgrid[Xs:Xm:(xe - xs) * 1j,
+                              Ys:Ym:(ye - ys) * 1j,
+                              Zs:Zm:(ze - zs) * 1j]
+        Q_[:, :, :] = numpy.exp(-(X**2 + Y**2 + Z**2))
         # TODO!!! Why this only affects boundaries?
         lf = self.dm.getVecArray(self.local_field)
-        lf[:,:,:]=0.1
-        
+        lf[:, :, :] = 0.1
+
     def monitor(self, snes, iter, fnorm):
         sol = snes.getSolution()
         field_array = self.dm.getVecArray(sol)
-    
+
     def rhs(self, snes, ftime, field, rhs):
         '''
         This is rhs in the time-stepping sense, not PDE sense, i.e. everything by dT/dt.
@@ -91,7 +91,7 @@ class convection_diffusion(object):
         # use nice N-dimensional indexing instead of linear (performance issue?)
         rhs_array = self.dm.getVecArray(rhs)
         # just in case, we zero rhs (optimise: remove this: does it still work? Reliably?)
-        rhs_array[:]=0
+        rhs_array[:] = 0
         # we need self.g as an array, too
         g_ = self.dm.getVecArray(self.g)
         Q_ = self.dm.getVecArray(self.Q)
@@ -99,23 +99,23 @@ class convection_diffusion(object):
         # usual indexing like [-1]; we could get these also by calling the method
         # self.dm.getGhostCorners() or self.dm.getCorners()
         (xs, xe), (ys, ye), (zs, ze) = self.dm.getRanges()
-        dx,dy,dz=self.dx,self.dy,self.dz
+        dx, dy, dz = self.dx, self.dy, self.dz
         # compute the Laplacian
         lapl = (
-            (field_array[xs-1:xe-1,ys:ye,zs:ze]-2*field_array[xs:xe,ys:ye,zs:ze]
-             +field_array[xs+1:xe+1,ys:ye,zs:ze])/dx*dy*dz +
-            (field_array[xs:xe,ys-1:ye-1,zs:ze]-2*field_array[xs:xe,ys:ye,zs:ze]
-             +field_array[xs:xe,ys+1:ye+1,zs:ze])/dy*dx*dz +
-            (field_array[xs:xe,ys:ye,zs-1:ze-1]-2*field_array[xs:xe,ys:ye,zs:ze]
-             +field_array[xs:xe,ys:ye,zs+1:ze+1])/dz*dx*dy)
+            (field_array[xs - 1:xe - 1, ys:ye, zs:ze] - 2 * field_array[xs:xe, ys:ye, zs:ze]
+             + field_array[xs + 1:xe + 1, ys:ye, zs:ze]) / dx * dy * dz +
+            (field_array[xs:xe, ys - 1:ye - 1, zs:ze] - 2 * field_array[xs:xe, ys:ye, zs:ze]
+             + field_array[xs:xe, ys + 1:ye + 1, zs:ze]) / dy * dx * dz +
+            (field_array[xs:xe, ys:ye, zs - 1:ze - 1] - 2 * field_array[xs:xe, ys:ye, zs:ze]
+             + field_array[xs:xe, ys:ye, zs + 1:ze + 1]) / dz * dx * dy)
         # update the right hand side
-        rhs_array[:] = (g_[:,:,:]*lapl[:,:,:] +
-                        Q_[:,:,:]*dx*dy*dz)
+        rhs_array[:] = (g_[:, :, :] * lapl[:, :, :] +
+                        Q_[:, :, :] * dx * dy * dz)
         # flops from lapl/point:     6*3
         # flops from the rest/point: 5
-        log.addFlops((6*3+5)*(xe-xs)*(ye-ys)*(ze-zs))
+        log.addFlops((6 * 3 + 5) * (xe - xs) * (ye - ys) * (ze - zs))
         return
-    
+
     def formJacobian(self, snes, X, J, P):
         '''
         Notice that the Laplacian stencil touches lattice points (x varies fastest)
@@ -143,27 +143,27 @@ class convection_diffusion(object):
         # this is familiar, too
         (xs, xe), (ys, ye), (zs, ze) = self.dm.getRanges()
         # shortcuts
-        dx,dy,dz=self.dx,self.dy,self.dz
+        dx, dy, dz = self.dx, self.dy, self.dz
         # this is a sparse matrix, so cannot use simple [indexes]
         for k in range(zs, ze):
             for j in range(ys, ye):
                 for i in range(xs, xe):
-                    row.index = (i,j,k)
+                    row.index = (i, j, k)
                     row.field = 0
-                    u = field_array[i,j,k]
+                    u = field_array[i, j, k]
                     # we write 1+1+1 to identify the place where different lattice
                     # spacings should go TODO!!!
-                    diag = -2.0*(dx*dy/dz+dx*dz/dy+dy*dz/dx) - g_[i,j,k]*2*field_array[i,j,k]*dx*dy*dz
+                    diag = -2.0 * (dx * dy / dz + dx * dz / dy + dy * dz / dx) - g_[i, j, k] * 2 * field_array[i, j, k] * dx * dy * dz
                     # loop over the indices of ALL non-zero entries on this row and the
                     # values of the corresponding elements
                     for index, value in [
-                            ((i,j,k-1), +1.0/dz*dx*dy),
-                            ((i,j-1,k), +1.0/dy*dx*dz),
-                            ((i-1,j,k), +1.0/dx*dy*dz),
+                            ((i, j, k - 1), +1.0 / dz * dx * dy),
+                            ((i, j - 1, k), +1.0 / dy * dx * dz),
+                            ((i - 1, j, k), +1.0 / dx * dy * dz),
                             ((i, j, k), diag),
-                            ((i+1,j,k), +1.0/dx*dy*dz),
-                            ((i,j+1,k), +1.0/dy*dx*dz),
-                            ((i,j,k+1), +1.0/dz*dx*dy)]:
+                            ((i + 1, j, k), +1.0 / dx * dy * dz),
+                            ((i, j + 1, k), +1.0 / dy * dx * dz),
+                            ((i, j, k + 1), +1.0 / dz * dx * dy)]:
                         col.index = index
                         col.field = 0
                         # set the values in the sparse matrix
@@ -171,31 +171,32 @@ class convection_diffusion(object):
         # work some magic to put the distributed matrix together
         P.assemble()
         if (J != P):
-            J.assemble() # matrix-free operator
+            J.assemble()  # matrix-free operator
         # our non-zero pattern stays the same for all iterations, so we tell PETSc that
         # (it allows some optimisations inside PETSc)
         return PETSc.Mat.Structure.SAME_NONZERO_PATTERN
 
+
 stype = PETSc.DMDA.StencilType.BOX
-bx    = PETSc.DMDA.BoundaryType.GHOSTED
-by    = PETSc.DMDA.BoundaryType.GHOSTED
-bz    = PETSc.DMDA.BoundaryType.GHOSTED
+bx = PETSc.DMDA.BoundaryType.GHOSTED
+by = PETSc.DMDA.BoundaryType.GHOSTED
+bz = PETSc.DMDA.BoundaryType.GHOSTED
 comm = PETSc.COMM_WORLD
 rank = comm.rank
-OptDB = PETSc.Options() #get PETSc option DB
-#M = OptDB.getInt('M', 11)
-#N = OptDB.getInt('N', 7)
-#P = OptDB.getInt('P', 5)
-M,N,P = -11, -7, -5
+OptDB = PETSc.Options()  # get PETSc option DB
+# M = OptDB.getInt('M', 11)
+# N = OptDB.getInt('N', 7)
+# P = OptDB.getInt('P', 5)
+M, N, P = -11, -7, -5
 m = OptDB.getInt('m', PETSc.DECIDE)
 n = OptDB.getInt('n', PETSc.DECIDE)
 p = OptDB.getInt('p', PETSc.DECIDE)
-dm = PETSc.DMDA().create(dim=3, sizes = (M,N,P), proc_sizes=(m,n,p),
-                         boundary_type=(bx,by,bz), stencil_type=stype,
-                         stencil_width = 1, dof = 1, comm = comm, setup = False)
+dm = PETSc.DMDA().create(dim=3, sizes=(M, N, P), proc_sizes=(m, n, p),
+                         boundary_type=(bx, by, bz), stencil_type=stype,
+                         stencil_width=1, dof=1, comm=comm, setup=False)
 dm.setFromOptions()
 dm.setUp()
-convdiff_problem = convection_diffusion(dm, {"dx":0.1, "dy":0.1, "dz":0.1})
+convdiff_problem = convection_diffusion(dm, {"dx": 0.1, "dy": 0.1, "dz": 0.1})
 
 # prepare the initial conditions
 rhs = dm.createGlobalVector()
@@ -207,9 +208,9 @@ ts.setDM(dm)
 ts.setRHSFunction(convdiff_problem.rhs, rhs)
 ts.setDuration(100, 1.e10)
 
-#--------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------
 # finish the TS setup
-#--------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------
 # set any -ts commend-line options (including those we checked above)
 ts.setFromOptions()
 
@@ -218,13 +219,13 @@ field = dm.createGlobalVector()
 convdiff_problem.create_initial_guess(field)
 
 # have fun (and measure how long fun takes)
-log=PETSc.Log()
-print("Flops logged: {flops}".format(flops=log.getFlops()))
+log = PETSc.Log()
+print(f"Flops logged: {log.getFlops()}")
 import cProfile
 start = time.clock()
 cProfile.run("ts.solve(field)")
 end = time.clock()
-print("Flops logged: {flops}".format(flops=log.getFlops()))
+print(f"Flops logged: {log.getFlops()}")
 # and plot
 U = dm.createNaturalVector()
 dm.globalToNatural(field, U)
@@ -235,14 +236,14 @@ f_ = convdiff_problem.dm.getVecArray(field)
 sol_ = convdiff_problem.dm.getVecArray(ts.getSolution())
 rhs_ = convdiff_problem.dm.getVecArray(rhs)
 # ouput some statistics
-if (dm.getComm().getRank()==0):
-    timespent=(end-start)
+if (dm.getComm().getRank() == 0):
+    timespent = (end - start)
     # the log is per-rank
-    flop=log.getFlops()/1e9
+    flop = log.getFlops() / 1e9
     print("TS Function evaluations: {iter}; time spent solving: {time} s at {flops} GFLOP/s = {ppp}% peak on 2.5 GHz Ivy Bridge".format(
         iter=ts.getStepNumber(),
-        flops=flop/timespent,
-        ppp = flop/(2.5*timespent*8)*100,
+        flops=flop / timespent,
+        ppp=flop / (2.5 * timespent * 8) * 100,
         time=timespent)
     )
 
@@ -261,11 +262,11 @@ if OptDB.getBool('plot_mpl', False):
             else:
                 from numpy import mgrid
                 nx, ny, nz = da.sizes
-                solution = U0[...].reshape(da.sizes,order="f")
-                print da.sizes, da.getRanges()
-                #xx, yy =  mgrid[0:1:1j*nx,0:1:1j*ny]
-                pylab.contourf(solution[:, :,nz//2])
-                #pylab.axis('equal')
+                solution = U0[...].reshape(da.sizes, order="f")
+                print(da.sizes, da.getRanges())
+                # xx, yy =  mgrid[0:1:1j*nx,0:1:1j*ny]
+                pylab.contourf(solution[:, :, nz // 2])
+                # pylab.axis('equal')
                 pylab.xlabel('X')
                 pylab.ylabel('Y')
                 pylab.title('Z/2')
@@ -274,4 +275,3 @@ if OptDB.getBool('plot_mpl', False):
         comm.barrier()
 
     plot_mpl(dm, U)
-
